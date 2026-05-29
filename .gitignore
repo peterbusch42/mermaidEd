@@ -1,0 +1,47 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit cache and secrets
+.streamlit/secrets.toml
+.streamlit/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Old / draft app versions
+app_Sonnet.py
+app_V2.py
+app_*.py
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
