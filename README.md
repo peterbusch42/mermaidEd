@@ -29,12 +29,12 @@ A Streamlit-based visual editor and live designer for [Mermaid](https://mermaid.
 ┌─────────────────────────────────────────────────────────────┐
 │  Sidebar: Shape / Padding / Font / Colors                   │
 ├──────────────────────────┬──────────────────────────────────┤
-│  📝 Mermaid Source        │  🧜 Mermaid Render               │
+│  📝 Mermaid Source       │  🧜 Mermaid Render               │
 │  Editor (text area)      │  🎨 Interactive Canvas           │
 │                          │                                  │
 │                          │  [Export Mermaid] [Export PNG]   │
 ├──────────────────────────┴──────────────────────────────────┤
-│  💾 Visual Theme Code Base (compiled Mermaid source)         │
+│  💾 Visual Theme Code Base (compiled Mermaid source)        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
