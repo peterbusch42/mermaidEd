@@ -4,8 +4,6 @@ import re
 import json
 import hashlib
 
-st.set_page_config(layout="wide", page_title="Ultimate Mermaid Architect v3.1")
-
 # --- UI Header ---
 st.title("⚡ Ultimate Mermaid Architect & Designer — v3.1")
 st.markdown("Design, drag-and-drop, style, and compile your systems workflows dynamically — **with live styling & subgraph-safe shape rewriting**.")
@@ -70,7 +68,16 @@ subgraph_border = st.sidebar.color_picker("Subgraph Border Color", "#cccccc")
 
 # --- Main Editor ---
 st.subheader("📝 Mermaid Source Editor")
-mermaid_input = st.text_area("Edit your Mermaid flowchart code below:", value=default_code, height=320)
+
+# The editor text lives in `designer_code` so it survives switching to the Diagram Gallery and back.
+if "designer_code" not in st.session_state:
+    st.session_state.designer_code = default_code
+st.session_state.mermaid_editor = st.session_state.designer_code
+
+def _sync_editor():
+    st.session_state.designer_code = st.session_state.mermaid_editor
+
+mermaid_input = st.text_area("Edit your Mermaid flowchart code below:", key="mermaid_editor", height=320, on_change=_sync_editor)
 
 # ============================================================
 # SHAPE TRANSFORMER — subgraph-safe, line-aware

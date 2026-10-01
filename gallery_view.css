@@ -1,0 +1,223 @@
+/* Diagram Gallery — styles for the `diagram_gallery` component (unscoped, so every class is dg-prefixed) */
+
+.dg-root {
+  --dg-card-w: 250px;
+  --dg-text: var(--st-text-color, #31333f);
+  --dg-surface: var(--st-secondary-background-color, #f0f2f6);
+  --dg-accent: var(--st-primary-color, #ff4b4b);
+  --dg-border: color-mix(in srgb, var(--dg-text) 14%, transparent);
+  --dg-muted: color-mix(in srgb, var(--dg-text) 60%, transparent);
+  color: var(--dg-text);
+  font-family: var(--st-font, "Source Sans Pro", sans-serif);
+}
+
+/* ---------- Toolbar ---------- */
+.dg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.dg-search {
+  flex: 1 1 280px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--dg-border);
+  border-radius: 8px;
+  background: var(--dg-surface);
+  color: var(--dg-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+.dg-search:focus {
+  outline: 2px solid var(--dg-accent);
+  outline-offset: -1px;
+}
+.dg-seg {
+  display: inline-flex;
+  border: 1px solid var(--dg-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dg-seg button {
+  border: 0;
+  border-right: 1px solid var(--dg-border);
+  background: transparent;
+  color: var(--dg-text);
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.dg-seg button:last-child { border-right: 0; }
+.dg-seg button:hover { background: var(--dg-surface); }
+.dg-seg button.dg-active {
+  background: var(--dg-accent);
+  color: #fff;
+}
+.dg-count {
+  margin-left: auto;
+  color: var(--dg-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.dg-hint {
+  margin: 6px 0 4px;
+  color: var(--dg-muted);
+  font-size: 0.8rem;
+}
+
+/* ---------- Groups ---------- */
+.dg-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--dg-border);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.dg-folder-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--dg-surface);
+  color: var(--dg-muted);
+}
+.dg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--dg-card-w), 100%), 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.dg-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--dg-muted);
+}
+
+/* ---------- Cards ---------- */
+.dg-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dg-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--dg-surface);
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
+}
+.dg-card:hover,
+.dg-card:focus-visible {
+  border-color: var(--dg-accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  outline: none;
+}
+.dg-card.dg-opening { transform: scale(0.97); }
+
+/* Diagrams are drawn for a white page, so the preview stays white in dark mode too */
+.dg-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: #fff;
+  color-scheme: light;  /* stop adaptive draw.io SVG exports from switching to their dark palette */
+  border-bottom: 1px solid var(--dg-border);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dg-thumb * { pointer-events: none; }  /* links in diagrams must not steal the double-click */
+.dg-thumb > img,
+.dg-thumb > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.dg-drawio-host {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.dg-thumb.dg-loading::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #d0d4dc;
+  border-top-color: #6b7280;
+  border-radius: 50%;
+  animation: dg-spin 0.8s linear infinite;
+}
+@keyframes dg-spin { to { transform: rotate(360deg); } }
+
+.dg-msg {
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  text-align: center;
+  color: #555;
+  overflow-wrap: anywhere;
+}
+.dg-msg-error { color: #b42318; }
+
+.dg-body {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dg-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dg-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-badge {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.dg-badge-mermaid { background: #ff3670; color: #fff; }
+.dg-badge-drawio { background: #f08705; color: #fff; }
+.dg-path,
+.dg-meta {
+  font-size: 0.75rem;
+  color: var(--dg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 3.2rem;  /* two rows of chips */
+  overflow: hidden;
+}
+.dg-chip {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--dg-border);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-chip-more { color: var(--dg-muted); }

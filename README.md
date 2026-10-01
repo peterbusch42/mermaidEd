@@ -18,6 +18,10 @@ A Streamlit-based visual editor and live designer for [Mermaid](https://mermaid.
 | **Export — PNG** | Download a high-resolution (2× scale) PNG snapshot of the interactive canvas |
 | **Compiled Code View** | Inspect the full styled Mermaid source (including `%%init` theme directives and `classDef`) at the bottom of the page |
 | **Live Render Token** | A sidebar indicator that changes on every style update — visual proof that the diagram re-renders reactively |
+| **Diagram Gallery** | Scan a whole folder (optionally with subfolders) for Mermaid and draw.io files and browse small-scale previews of all of them on one page |
+| **draw.io Support** | Reads `.drawio` / `.dio` files (plain or compressed, multi-page) and `.drawio.svg` / `.drawio.png` exports with embedded diagrams |
+| **Content Search** | Filter the gallery by file name, folder, page name or any text inside the diagrams |
+| **Double-Click to Open** | Every diagram opens in the installed draw.io desktop app — Mermaid is converted into editable draw.io shapes |
 
 ---
 
@@ -74,7 +78,12 @@ The app opens automatically in your default browser at `http://localhost:8501`.
 
 ```
 mermaidEd/
-├── app.py              # Main Streamlit application
+├── app.py              # Entry point — page navigation
+├── designer.py         # Page 1: Mermaid Designer (editor, renderer, canvas)
+├── gallery.py          # Page 2: Diagram Gallery (folder scan, double-click handling)
+├── gallery_view.js     # Gallery browser component: thumbnails, filter, double-click
+├── gallery_view.css    # Gallery component styles
+├── diagram_scan.py     # Finds and parses Mermaid / draw.io files (no Streamlit dependency)
 ├── requirements.txt    # Python dependencies
 └── README.md           # This file
 ```
@@ -82,6 +91,8 @@ mermaidEd/
 ---
 
 ## 🎛️ How to Use
+
+The app has two pages, listed in the sidebar: **⚡ Mermaid Designer** (sections 1–5) and **🗂️ Diagram Gallery** (section 6).
 
 ### 1 — Write or Paste Mermaid Code
 
@@ -178,9 +189,34 @@ At the bottom of the page, the **💾 Visual Theme Code Base** section displays 
 
 ---
 
+### 6 — Diagram Gallery
+
+Open **🗂️ Diagram Gallery** in the sidebar, enter a folder path and press Enter. Every diagram found is shown as a card with a small preview, the file name, its folder, the diagram type, the labels it contains and the last-modified date.
+
+| File type | What is shown |
+|---|---|
+| `.mmd`, `.mermaid` | Mermaid diagram (any type — flowchart, sequence, class, …) |
+| `.md`, `.markdown` | One card per ` ```mermaid ` block; files without Mermaid blocks are skipped |
+| `.drawio`, `.dio` | First page of the draw.io diagram; page names and count on the card |
+| `.drawio.svg`, `.drawio.png` | The exported image itself; labels read from the embedded diagram |
+
+- **Filter** — type in the search box to match file names, folders, page names and any text inside the diagrams (all words must match).
+- **All / Mermaid / draw.io** — show only one kind of diagram.
+- **By folder / A–Z / Newest** — group by folder, or sort by name or modification date.
+- **S / M / L** — preview size.
+- **Double-click** (or select a card and press Enter) opens the diagram in the **draw.io desktop app** ([download](https://www.drawio.com/)) on the machine that runs Streamlit (macOS, Windows and Linux):
+  - `.drawio`, `.dio`, `.drawio.svg`, `.drawio.png` open as they are.
+  - `.mmd` / `.mermaid` files are opened directly; draw.io converts them into editable draw.io shapes (requires draw.io 31 or newer — tested with 31.5.3).
+  - A Mermaid block inside a Markdown file is first written to a temporary `.mmd` file (in your system temp folder under `mermaidEd/`), which draw.io then opens — use *File → Save As* in draw.io to keep it.
+- **🔄 Rescan** — re-read the folder. Files you changed are picked up automatically on the next interaction; Rescan forces a full re-read.
+
+Previews are rendered lazily as you scroll, so folders with hundreds of diagrams stay responsive. Folders named `.git`, `node_modules`, `.venv`, `venv`, `__pycache__` and hidden folders are skipped; a scan stops after 1500 files and files larger than 5 MB are listed without preview.
+
+---
+
 ## 🔧 Technical Details
 
-### Python Back-End (`app.py`)
+### Python Back-End (`designer.py`)
 
 | Component | Description |
 |---|---|
@@ -188,12 +224,25 @@ At the bottom of the page, the **💾 Visual Theme Code Base** section displays 
 | `parse_mermaid()` | State-machine parser that extracts nodes (with parent/subgraph membership), edges (with label and arrow type), and subgraph definitions from raw Mermaid text. Used to build the Cytoscape element list. |
 | `compiled_code` | Assembled from an `%%init` themeVariables block + the shape-rewritten Mermaid source + a `classDef customStyle` rule. |
 
+### Diagram Gallery (`gallery.py`, `diagram_scan.py`, `gallery_view.js`)
+
+| Component | Description |
+|---|---|
+| `find_diagram_files()` | Walks the folder, skipping tool and hidden folders, and returns all candidate diagram files |
+| `load_entries()` | Parses one file into gallery entries: Mermaid type and labels, or draw.io pages, shape count and labels (decompressing base64 + deflate diagram payloads, and reading the diagram embedded in `.drawio.svg` / `.drawio.png`). Cached per file by modification time and size |
+| `drawio_file_for()` | Picks the file to hand to draw.io — the diagram file itself, or a temporary `.mmd` for a Mermaid block inside Markdown |
+| `open_in_drawio()` | Locates the draw.io desktop app for the current OS and opens a file in it |
+| `gallery_view` | A bidirectional `st.components.v2` component. Renders thumbnails in the browser (Mermaid via `mermaid.render`, draw.io via the official viewer) and sends double-clicks back to Python. Python only opens paths that are part of the current scan |
+
 ### Front-End Dependencies (CDN — no local install required)
 
 | Library | Version | Purpose |
 |---|---|---|
 | [Mermaid](https://mermaid.js.org/) | 10.x (ESM) | Renders the Mermaid diagram in Tab 1 |
 | [Cytoscape.js](https://js.cytoscape.org/) | 3.26.0 | Interactive drag-and-drop graph canvas in Tab 2 |
+| [draw.io viewer](https://www.drawio.com/doc/faq/embed-html) | latest (`viewer.diagrams.net`) | Renders draw.io thumbnails in the Diagram Gallery |
+
+> The previews need internet access to load Mermaid and the draw.io viewer from their CDNs.
 
 ### Python Dependencies
 
