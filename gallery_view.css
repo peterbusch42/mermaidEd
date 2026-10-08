@@ -1,4 +1,4 @@
-/* Diagram Gallery — styles for the `diagram_gallery` component (unscoped, so every class is dg-prefixed) */
+/* Gallery — styles for the `diagram_gallery` component (unscoped, so every class is dg-prefixed) */
 
 .dg-root {
   --dg-card-w: 250px;
@@ -100,6 +100,7 @@
 
 /* ---------- Cards ---------- */
 .dg-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--dg-border);
@@ -117,6 +118,29 @@
   outline: none;
 }
 .dg-card.dg-opening { transform: scale(0.97); }
+
+/* Card holding the current Ctrl+F match */
+.dg-card.dg-found {
+  border-color: var(--dg-accent);
+  box-shadow: 0 0 0 3px var(--dg-accent), 0 6px 18px rgba(0, 0, 0, 0.18);
+  animation: dg-found-pulse 0.6s ease-out 2;
+}
+.dg-card.dg-found .dg-body { background: color-mix(in srgb, var(--dg-accent) 12%, var(--dg-surface)); }
+@keyframes dg-found-pulse {
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--dg-accent) 40%, transparent), 0 6px 18px rgba(0, 0, 0, 0.18); }
+}
+
+/* Invisible but findable copy of the card's text (see buildCard) — stays invisible once the browser reveals it */
+.dg-findable {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 /* Diagrams are drawn for a white page, so the preview stays white in dark mode too */
 .dg-thumb {
@@ -165,6 +189,72 @@
 }
 .dg-msg-error { color: #b42318; }
 
+/* ---------- Markdown document preview: the top of the page, scaled with the card ---------- */
+.dg-kind-markdown .dg-thumb { container-type: inline-size; }
+.dg-doc {
+  width: 100%;
+  height: 100%;
+  padding: 6% 8% 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #1f2328;
+  font: max(7px, 3.6cqi) / 1.4 Calibri, Carlito, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent);
+  mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+.dg-doc > :first-child { margin-top: 0; }
+.dg-doc h1, .dg-doc h2, .dg-doc h3, .dg-doc h4, .dg-doc h5, .dg-doc h6 {
+  margin: 0.8em 0 0.3em;
+  padding: 0;
+  border: 0;
+  color: #0f4761;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: normal;
+}
+.dg-doc h1 { font-size: 1.6em; }
+.dg-doc h2 { font-size: 1.35em; }
+.dg-doc h3 { font-size: 1.15em; }
+.dg-doc p, .dg-doc ul, .dg-doc ol, .dg-doc pre, .dg-doc blockquote, .dg-doc table, .dg-doc dl {
+  margin: 0 0 0.6em;
+  font-size: 1em;
+}
+.dg-doc ul, .dg-doc ol { padding-left: 1.4em; }
+.dg-doc li { margin: 0; font-size: 1em; }
+.dg-doc a { color: #0969da; text-decoration: underline; }
+.dg-doc code {
+  padding: 0 0.2em;
+  border-radius: 3px;
+  background: #f3f4f6;
+  color: inherit;
+  font: 0.9em ui-monospace, Menlo, Consolas, monospace;
+}
+.dg-doc pre {
+  padding: 0.5em 0.7em;
+  border-radius: 4px;
+  background: #f3f4f6;
+  white-space: pre-wrap;
+  overflow: hidden;
+}
+.dg-doc pre code { padding: 0; background: none; }
+.dg-doc blockquote { margin-left: 0; padding-left: 0.8em; border-left: 3px solid #d0d7de; color: #57606a; }
+.dg-doc table { border-collapse: collapse; max-width: 100%; }
+.dg-doc th, .dg-doc td { padding: 0.15em 0.4em; border: 1px solid #d0d7de; }
+.dg-doc hr { margin: 0.8em 0; border: 0; border-top: 1px solid #d0d7de; }
+.dg-doc svg { max-width: 100%; height: auto; }
+.dg-doc-img {
+  display: inline-block;
+  padding: 0.1em 0.4em;
+  border: 1px dashed #c4c9d0;
+  border-radius: 3px;
+  color: #6b7280;
+  font-size: 0.9em;
+}
+
 .dg-body {
   padding: 8px 10px 10px;
   display: flex;
@@ -195,6 +285,7 @@
 }
 .dg-badge-mermaid { background: #ff3670; color: #fff; }
 .dg-badge-drawio { background: #f08705; color: #fff; }
+.dg-badge-markdown { background: #2b579a; color: #fff; }
 .dg-path,
 .dg-meta {
   font-size: 0.75rem;
@@ -221,3 +312,57 @@
   white-space: nowrap;
 }
 .dg-chip-more { color: var(--dg-muted); }
+
+/* ---------- Delete ---------- */
+.dg-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--dg-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dg-surface) 90%, transparent);
+  color: var(--dg-text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  z-index: 2;
+}
+.dg-card:hover .dg-del,
+.dg-card:focus-within .dg-del { opacity: 1; }
+.dg-del:hover { background: #d93025; border-color: #d93025; }
+@media (hover: none) { .dg-del { opacity: 1; } }
+
+.dg-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+  background: color-mix(in srgb, var(--dg-surface) 94%, transparent);
+  backdrop-filter: blur(3px);
+  cursor: default;
+  word-break: break-word;
+}
+.dg-confirm[hidden] { display: none; }
+.dg-confirm-actions { display: flex; gap: 8px; }
+.dg-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--dg-border);
+  border-radius: 8px;
+  background: var(--dg-surface);
+  color: var(--dg-text);
+  font: inherit;
+  cursor: pointer;
+}
+.dg-btn:hover { border-color: var(--dg-accent); }
+.dg-btn-danger { background: #d93025; border-color: #d93025; color: #fff; }
+.dg-btn-danger:hover { background: #b3261e; border-color: #b3261e; }
+.dg-btn:disabled { opacity: 0.6; cursor: wait; }
+.dg-card.dg-deleting { opacity: 0.5; pointer-events: none; }

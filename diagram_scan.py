@@ -1,4 +1,4 @@
-"""Directory scanner for Mermaid and draw.io diagram files.
+"""Directory scanner for Mermaid and draw.io diagram files and Markdown documents.
 
 Pure Python (no Streamlit dependency) so it can be reused and tested on its own.
 Each discovered diagram becomes a plain dict that the gallery page ships to the
@@ -31,6 +31,8 @@ MAX_FILES = 1500                     # stop walking after this many diagram file
 MAX_PREVIEW_BYTES = 5 * 1024 * 1024  # larger files are listed but not previewed
 MAX_SEARCH_CHARS = 6000              # text shipped to the browser for filtering
 MAX_LABELS = 12                      # label chips shown on a card
+MAX_DOC_PREVIEW_CHARS = 4000         # Markdown shipped to the browser for a document thumbnail
+PANDOC_TIMEOUT_S = 120
 
 MERMAID_FENCE = re.compile(r"^```+\s*mermaid\s*$\n(.*?)^```+\s*$", re.MULTILINE | re.DOTALL | re.IGNORECASE)
 MERMAID_LABEL = re.compile(
@@ -39,6 +41,9 @@ MERMAID_LABEL = re.compile(
     r'|^\s*(?:participant|actor|class|state)\s+(?:\w+\s+as\s+)?([^\s{~][^{\n]*?)\s*$'  # sequence / class / state names
     r'|:\s*([^:\n]+?)\s*$',                                                      # message / transition text
     re.MULTILINE)
+FRONT_MATTER = re.compile(r"\A---[ \t]*\n(.*?)\n(?:---|\.\.\.)[ \t]*(?:\n|\Z)", re.DOTALL)
+FENCED_CODE = re.compile(r"^(```+|~~~+).*?^\1[ \t]*$", re.MULTILINE | re.DOTALL)
+MD_HEADING = re.compile(r"^#{1,6}[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
 MERMAID_TYPES = {
     "flowchart": "Flowchart", "graph": "Flowchart", "sequencediagram": "Sequence",
     "classdiagram": "Class", "statediagram": "State", "statediagram-v2": "State",
@@ -113,6 +118,33 @@ def _mermaid_entry(path, code, block=None):
         "label_count": len(labels),
         "search": code[:MAX_SEARCH_CHARS],
         "source": code,
+    }
+
+
+# ============================================================
+# MARKDOWN DOCUMENTS
+# ============================================================
+def _markdown_entry(text):
+    """The whole Markdown file as one document card; double-click converts it to .docx with pandoc."""
+    match = FRONT_MATTER.match(text)
+    body = text[match.end():] if match else text
+    title = re.search(r"^title:[ \t]*[\"']?(.+?)[\"']?[ \t]*$", match.group(1), re.MULTILINE) if match else None
+    prose = FENCED_CODE.sub("", body)  # `# comments` in code blocks are not headings
+    headings = []
+    for h in MD_HEADING.findall(prose):
+        h = re.sub(r"[*`]", "", h).strip()
+        if h and h not in headings:
+            headings.append(h)
+    preview = f"# {title.group(1)}\n\n{body}" if title else body  # pandoc puts the title on top too
+    return {
+        "kind": "markdown",
+        "subtype": "Markdown",
+        "block": None,
+        "labels": headings[:MAX_LABELS],
+        "label_count": len(headings),
+        "words": len(prose.split()),
+        "search": text[:MAX_SEARCH_CHARS],
+        "source": preview[:MAX_DOC_PREVIEW_CHARS],
     }
 
 
@@ -223,17 +255,20 @@ def _drawio_entry(path, kind):
 # ============================================================
 # PUBLIC API
 # ============================================================
+def _card_kind(kind):
+    """Card kind for a classified file: 'mermaid', 'markdown' or 'drawio'."""
+    return "drawio" if kind.startswith("drawio") else kind
+
+
 def load_entries(path_str):
-    """Parse one file into zero or more gallery entries (Markdown can hold several Mermaid blocks)."""
+    """Parse one file into gallery entries — Markdown gives a document card plus one per Mermaid block."""
     path = Path(path_str)
     kind = classify(path)
     stat = path.stat()
     base = {"path": str(path), "name": path.name, "mtime": stat.st_mtime, "size": stat.st_size}
 
     if stat.st_size > MAX_PREVIEW_BYTES:
-        if kind == "markdown":
-            return []
-        return [{**base, "kind": "drawio" if kind.startswith("drawio") else "mermaid",
+        return [{**base, "kind": _card_kind(kind),
                  "subtype": "too large", "block": None, "labels": [], "label_count": 0, "search": "",
                  "error": f"File is larger than {MAX_PREVIEW_BYTES // (1024 * 1024)} MB — preview skipped."}]
 
@@ -241,12 +276,14 @@ def load_entries(path_str):
         if kind == "mermaid":
             return [{**base, **_mermaid_entry(path, path.read_text(encoding="utf-8", errors="replace"))}]
         if kind == "markdown":
-            blocks = MERMAID_FENCE.findall(path.read_text(encoding="utf-8", errors="replace"))
-            return [{**base, **_mermaid_entry(path, code.strip(), block=i + 1 if len(blocks) > 1 else None)}
-                    for i, code in enumerate(blocks)]
+            text = path.read_text(encoding="utf-8", errors="replace")
+            blocks = MERMAID_FENCE.findall(text)
+            return [{**base, **_markdown_entry(text)}] + [
+                {**base, **_mermaid_entry(path, code.strip(), block=i + 1 if len(blocks) > 1 else None)}
+                for i, code in enumerate(blocks)]
         return [{**base, **_drawio_entry(path, kind)}]
     except (OSError, ET.ParseError) as exc:
-        return [{**base, "kind": "drawio" if kind.startswith("drawio") else "mermaid", "subtype": "unreadable",
+        return [{**base, "kind": _card_kind(kind), "subtype": "unreadable",
                  "block": None, "labels": [], "label_count": 0, "search": "", "error": str(exc)}]
 
 
@@ -291,3 +328,81 @@ def open_in_drawio(path):
     if not cmd:
         raise RuntimeError("draw.io desktop app not found. Install it from https://www.drawio.com/")
     subprocess.Popen(cmd + [str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def find_pandoc():
+    """Return the pandoc executable, or None.
+
+    Also checks the usual install folders, which are missing from PATH when Streamlit is started
+    from an IDE or the Dock rather than a login shell.
+    """
+    candidates = [shutil.which("pandoc"), "/opt/homebrew/bin/pandoc", "/usr/local/bin/pandoc"]
+    if os.environ.get("LOCALAPPDATA"):
+        candidates.append(os.path.join(os.environ["LOCALAPPDATA"], "Pandoc", "pandoc.exe"))
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+def markdown_to_docx(path_str):
+    """Convert a Markdown file to .docx with pandoc and return the path of the .docx.
+
+    Same as `pandoc file.md -o file.docx`, but written to a temporary folder so a file.docx next to
+    the source is never overwritten. Each version of the source gets its own folder: an unchanged
+    file reuses its last conversion, and an edited one opens fresh instead of Word bringing back the
+    stale copy it still has open.
+    """
+    pandoc = find_pandoc()
+    if not pandoc:
+        raise RuntimeError("pandoc not found. Install it from https://pandoc.org/installing.html")
+    src = Path(path_str)
+    stat = src.stat()
+    tag = hashlib.sha1(str(src).encode()).hexdigest()[:10]
+    target = (Path(tempfile.gettempdir()) / "mermaidEd" / "docx" / tag
+              / f"{stat.st_mtime_ns:x}-{stat.st_size:x}" / f"{src.stem}.docx")
+    if target.is_file():
+        return str(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # Run in the source folder so relative image paths resolve as they do on the command line
+        proc = subprocess.run([pandoc, str(src), "-o", str(target)], cwd=src.parent,
+                              capture_output=True, text=True, timeout=PANDOC_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        target.unlink(missing_ok=True)
+        raise RuntimeError(f"pandoc did not finish within {PANDOC_TIMEOUT_S} s") from None
+    if proc.returncode != 0:
+        target.unlink(missing_ok=True)
+        raise RuntimeError(f"pandoc failed: {proc.stderr.strip()[:300] or f'exit code {proc.returncode}'}")
+    return str(target)
+
+
+def open_with_default_app(path):
+    """Open `path` in the app the OS associates with its type (Word, Pages, LibreOffice … for .docx)."""
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(str(path))
+    elif system == "Darwin":
+        proc = subprocess.run(["open", str(path)], capture_output=True, text=True, timeout=30)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or f"Could not open {path}")
+    else:
+        subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def trash_file(path_str):
+    """Move a file to the system trash so it can be restored. Returns a short past-tense description."""
+    path = Path(path_str)
+    try:
+        from send2trash import send2trash
+        send2trash(str(path))
+        return "Moved to trash:"
+    except ImportError:
+        pass
+    if platform.system() == "Darwin":
+        trash = Path.home() / ".Trash"
+        target = trash / path.name
+        n = 1
+        while target.exists():
+            target = trash / f"{path.stem} {n}{''.join(path.suffixes)}"
+            n += 1
+        shutil.move(str(path), str(target))
+        return "Moved to trash:"
+    raise RuntimeError("Install `send2trash` (pip install send2trash) to delete files safely.")

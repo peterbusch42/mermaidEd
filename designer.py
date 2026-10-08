@@ -5,7 +5,7 @@ import json
 import hashlib
 
 # --- UI Header ---
-st.title("⚡ Ultimate Mermaid Architect & Designer — v3.1")
+st.title("⚡ GalleryEd · Mermaid Designer — v3.1")
 st.markdown("Design, drag-and-drop, style, and compile your systems workflows dynamically — **with live styling & subgraph-safe shape rewriting**.")
 
 # --- Rich Default Mermaid Code ---
@@ -69,7 +69,7 @@ subgraph_border = st.sidebar.color_picker("Subgraph Border Color", "#cccccc")
 # --- Main Editor ---
 st.subheader("📝 Mermaid Source Editor")
 
-# The editor text lives in `designer_code` so it survives switching to the Diagram Gallery and back.
+# The editor text lives in `designer_code` so it survives switching to the Gallery and back.
 if "designer_code" not in st.session_state:
     st.session_state.designer_code = default_code
 st.session_state.mermaid_editor = st.session_state.designer_code
