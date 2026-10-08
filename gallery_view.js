@@ -162,10 +162,16 @@ function formatDate(mtime) {
   return new Date(mtime * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-// Trash button on hover, then an in-card confirmation. Files go to the system trash (see Python side).
+const TRASH_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/>' +
+  '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
+  '<path d="M10 11v6M14 11v6"/></svg>';
+
+// Trash button in the card's corner, then an in-card confirmation. Files go to the system trash (see Python side).
 function buildDeleteControls(state, card, item) {
   const wrap = el("div", "dg-del-wrap");
-  const trash = el("button", "dg-del", "🗑");
+  const trash = el("button", "dg-del");
+  trash.innerHTML = TRASH_ICON;
   trash.type = "button";
   trash.title = "Move this file to the trash";
   trash.setAttribute("aria-label", `Delete ${item.name}`);
@@ -173,6 +179,9 @@ function buildDeleteControls(state, card, item) {
   const confirm = el("div", "dg-confirm");
   confirm.hidden = true;
   confirm.appendChild(el("div", "dg-confirm-text", `Move “${item.name}” to the trash?`));
+  if (item.kind === "markdown") {
+    confirm.appendChild(el("div", "dg-confirm-note", "The whole document goes, including any diagrams in it."));
+  }
   const actions = el("div", "dg-confirm-actions");
   const yes = el("button", "dg-btn dg-btn-danger", "Delete");
   const no = el("button", "dg-btn", "Cancel");
@@ -185,6 +194,8 @@ function buildDeleteControls(state, card, item) {
 
   trash.addEventListener("click", () => {
     root_clearConfirms(state.root);
+    yes.disabled = no.disabled = false;
+    yes.textContent = "Delete";
     confirm.hidden = false;
     no.focus();
   });
@@ -204,6 +215,14 @@ function buildDeleteControls(state, card, item) {
 
 function root_clearConfirms(root) {
   root.querySelectorAll(".dg-confirm").forEach((c) => { c.hidden = true; });
+}
+
+// After a failed delete (a toast says why) the scan is unchanged — make the card usable again
+function reviveFailedDeletes(root) {
+  root.querySelectorAll(".dg-card.dg-deleting").forEach((card) => {
+    card.classList.remove("dg-deleting");
+    card.querySelector(".dg-confirm").hidden = true;
+  });
 }
 
 function buildCard(state, item) {
@@ -447,7 +466,8 @@ function buildToolbar(state, data) {
   bar.appendChild(state.count);
 
   const notes = ["Double-click a card (or press Enter) to open it: diagrams in the draw.io app — Mermaid becomes " +
-    "editable draw.io shapes — and Markdown documents as Word files (.docx, via pandoc)."];
+    "editable draw.io shapes — and Markdown documents as Word files (.docx, via pandoc). " +
+    "The trash icon on a card moves its file to the system trash."];
   if (!data.hasDrawio) notes.push("⚠️ draw.io desktop app not found — install it from drawio.com to open diagrams.");
   if (!data.hasPandoc) notes.push("⚠️ pandoc not found — install it from pandoc.org to open Markdown documents.");
   return [bar, el("div", "dg-hint", notes.join(" "))];
@@ -460,6 +480,7 @@ export default function (component) {
   // Streamlit re-invokes us on every rerun; keep the rendered thumbnails when nothing changed
   if (root?.__dg && root.__dg.sig === data.sig) {
     root.__dg.setTriggerValue = setTriggerValue;
+    if (data.deleteFailed) reviveFailedDeletes(root);
     observe(root.__dg);
     return () => root.__dg.observer?.disconnect();
   }

@@ -23,6 +23,7 @@ A Streamlit app for viewing and editing diagrams and documents. The **Gallery** 
 | **Content Search** | Filter the gallery by file name, folder, page name or any text inside the diagrams |
 | **Double-Click to Open** | Every diagram opens in the installed draw.io desktop app — Mermaid is converted into editable draw.io shapes |
 | **Markdown → Word** | Markdown files get a page preview card; double-click converts them with pandoc and opens the `.docx` in Word |
+| **Delete to Trash** | The trash icon on a card moves its file to the system trash after a confirmation, so it can be restored. A Markdown document is deleted from its document card, not from the cards of the diagrams inside it |
 
 ---
 

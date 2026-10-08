@@ -64,6 +64,11 @@ def choose_folder(path):
     st.rerun()
 
 
+def queue_delete():
+    """Keep a card's delete request for this run's scan — handled before the grid is drawn, so the card is gone."""
+    st.session_state["_gallery_delete"] = st.session_state["diagram_gallery"].get("delete")
+
+
 @st.dialog("Choose a folder", width="large")
 def folder_picker():
     start = Path(st.session_state.get("_gallery_dir_value", "")).expanduser()
@@ -165,11 +170,32 @@ with st.spinner(f"Scanning {root} …"):
             stat = f.stat()
         except OSError:
             continue
+        is_markdown = diagram_scan.classify(f) == "markdown"
         for entry in load_file(str(f), stat.st_mtime, stat.st_size):
             rel_dir = f.parent.relative_to(root).as_posix()
             entries.append({**entry, "dir": "" if rel_dir == "." else rel_dir,
-                            # a Markdown file can hold other content and several diagrams — never delete it from here
-                            "deletable": diagram_scan.classify(f) != "markdown"})
+                            # Deleting trashes the whole file: a Markdown document only from its own card,
+                            # never from a card for one of the diagrams inside it
+                            "deletable": not is_markdown or entry["kind"] == "markdown"})
+
+# ============================================================
+# DELETE HANDLER (request from a card's trash button, see queue_delete)
+# ============================================================
+doomed = st.session_state.pop("_gallery_delete", None)
+delete_failed = None  # the failed request's timestamp — tells the browser to make the card usable again
+if doomed:
+    # Only delete files that are part of the current scan — never an arbitrary path from the browser
+    entry = next((e for e in entries if e["path"] == doomed.get("path") and e["deletable"]), None)
+    if entry is None:
+        st.toast("That file is no longer part of the scan — try 🔄 Rescan.", icon="⚠️")
+    else:
+        try:
+            how = diagram_scan.trash_file(entry["path"])
+            entries = [e for e in entries if e["path"] != entry["path"]]
+            st.toast(f"{how} **{entry['name']}**", icon="🗑️")
+        except (RuntimeError, OSError) as exc:
+            delete_failed = doomed.get("t")
+            st.toast(f"Could not delete {entry['name']}: {exc}", icon="❌")
 
 if truncated:
     st.warning(f"Stopped after {diagram_scan.MAX_FILES} files — pick a more specific folder to see everything.")
@@ -191,9 +217,9 @@ signature = hashlib.sha1(
 result = gallery_view(
     key="diagram_gallery",
     data={"items": entries, "sig": signature, "hasDrawio": diagram_scan.find_drawio_app() is not None,
-          "hasPandoc": diagram_scan.find_pandoc() is not None},
+          "hasPandoc": diagram_scan.find_pandoc() is not None, "deleteFailed": delete_failed},
     on_open_change=lambda: None,
-    on_delete_change=lambda: None,
+    on_delete_change=queue_delete,
 )
 
 # ============================================================
@@ -220,20 +246,3 @@ if request:
             st.toast(f"Opening **{label}** in draw.io …", icon="🚀")
         except (RuntimeError, OSError) as exc:
             st.toast(str(exc), icon="❌")
-
-# ============================================================
-# DELETE HANDLER
-# ============================================================
-doomed = result.delete
-if doomed:
-    entry = next((e for e in entries if e["path"] == doomed.get("path") and e["deletable"]), None)
-    if entry is None:
-        st.toast("That file is no longer part of the scan — try 🔄 Rescan.", icon="⚠️")
-    else:
-        try:
-            how = diagram_scan.trash_file(entry["path"])
-            load_file.clear()
-            st.toast(f"{how} **{entry['name']}**", icon="🗑️")
-            st.rerun()
-        except (RuntimeError, OSError) as exc:
-            st.toast(f"Could not delete {entry['name']}: {exc}", icon="❌")

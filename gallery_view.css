@@ -318,21 +318,23 @@
   position: absolute;
   top: 6px;
   right: 6px;
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   border: 1px solid var(--dg-border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--dg-surface) 90%, transparent);
-  color: var(--dg-text);
+  color: var(--dg-muted);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  opacity: 0.75;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
   z-index: 2;
 }
 .dg-card:hover .dg-del,
-.dg-card:focus-within .dg-del { opacity: 1; }
-.dg-del:hover { background: #d93025; border-color: #d93025; }
-@media (hover: none) { .dg-del { opacity: 1; } }
+.dg-card:focus-within .dg-del { opacity: 1; color: var(--dg-text); }
+.dg-card .dg-del:hover { background: #d93025; border-color: #d93025; color: #fff; }
 
 .dg-confirm {
   position: absolute;
@@ -351,6 +353,11 @@
   word-break: break-word;
 }
 .dg-confirm[hidden] { display: none; }
+.dg-confirm-note {
+  margin-top: -6px;
+  font-size: 0.8rem;
+  color: var(--dg-muted);
+}
 .dg-confirm-actions { display: flex; gap: 8px; }
 .dg-btn {
   padding: 6px 14px;
