@@ -103,14 +103,14 @@ async function renderDrawio(item, box) {
     "check-visible-state": false,
   }));
   box.replaceChildren(host);
-  await new Promise((resolve, reject) => {
+  const viewer = await new Promise((resolve, reject) => {
     try {
       window.GraphViewer.createViewerForElement(host, resolve);
     } catch (err) {
       reject(err);
     }
   });
-  fitSvgToBox(host);
+  fitSvgToBox(host, viewer?.graph?.getGraphBounds());
 }
 
 // The top of the document as a miniature page
@@ -124,11 +124,13 @@ async function renderMarkdown(item, box) {
   box.replaceChildren(page);
 }
 
-// The viewer draws at 100 % zoom; crop to the drawing and scale it into the card instead.
-function fitSvgToBox(host) {
+// Crop the viewer's SVG to the drawing and scale it into the card. The graph's own bounds are used when
+// available: getBBox() also counts each HTML label's <foreignObject>, which spans 100 % of the viewport and
+// would shrink the drawing to a speck.
+function fitSvgToBox(host, bounds) {
   const svg = host.querySelector("svg");
   if (!svg) throw new Error("Nothing to draw");
-  const bb = svg.getBBox();
+  const bb = bounds?.width && bounds?.height ? bounds : svg.getBBox();
   if (!bb.width || !bb.height) throw new Error("Empty diagram");
   const pad = Math.max(bb.width, bb.height) * 0.03;
   svg.setAttribute("viewBox", `${bb.x - pad} ${bb.y - pad} ${bb.width + 2 * pad} ${bb.height + 2 * pad}`);
