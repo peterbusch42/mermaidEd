@@ -134,9 +134,11 @@ def folder_picker():
 st.title("🗂️ GalleryEd · Gallery")
 st.markdown(
     "Scan a folder for **Mermaid** (`.mmd`, `.mermaid`, ` ```mermaid ` blocks in `.md`), "
-    "**draw.io** (`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`) and **Markdown** (`.md`) files and see them all at a glance. "
+    "**draw.io** (`.drawio`, `.dio`, `.drawio.svg`, `.drawio.png`), **Markdown** (`.md`), **Word** (`.docx`), "
+    "**OpenDocument** (`.odt`) and **PDF** (`.pdf`) files and see them all at a glance. "
     "**Double-click** a card to open it: diagrams in the draw.io desktop app — Mermaid diagrams are converted into "
-    "editable draw.io shapes — and Markdown documents as Word files (`.docx`, converted with pandoc)."
+    "editable draw.io shapes — Markdown documents as Word files (`.docx`, converted with pandoc), and Word, "
+    "OpenDocument or PDF files in their default app (Word, LibreOffice, Preview …)."
 )
 
 col_dir, col_browse, col_rec, col_btn = st.columns([6, 1.3, 1.6, 1], vertical_alignment="bottom")
@@ -174,8 +176,8 @@ with st.spinner(f"Scanning {root} …"):
         for entry in load_file(str(f), stat.st_mtime, stat.st_size):
             rel_dir = f.parent.relative_to(root).as_posix()
             entries.append({**entry, "dir": "" if rel_dir == "." else rel_dir,
-                            # Deleting trashes the whole file: a Markdown document only from its own card,
-                            # never from a card for one of the diagrams inside it
+                            # Deleting trashes the whole file: a document (Markdown, Word, OpenDocument, PDF) only
+                            # from its own card, never from a card for one of the diagrams inside it
                             "deletable": not is_markdown or entry["kind"] == "markdown"})
 
 # ============================================================
@@ -200,14 +202,19 @@ if doomed:
 if truncated:
     st.warning(f"Stopped after {diagram_scan.MAX_FILES} files — pick a more specific folder to see everything.")
 if not entries:
-    st.info("No diagrams or Markdown documents found in this folder.")
+    st.info("No diagrams or documents found in this folder.")
     st.stop()
 
 n_drawio = sum(e["kind"] == "drawio" for e in entries)
-n_docs = sum(e["kind"] == "markdown" for e in entries)
-st.caption(f"Found **{len(entries) - n_docs}** diagrams and **{n_docs}** Markdown documents in "
+n_docs = sum(e["kind"] in ("markdown", "docx", "odt", "pdf") for e in entries)
+doc_detail = " · ".join(f"{n} {label}" for label, n in [
+    ("Markdown", sum(e["kind"] == "markdown" for e in entries)),
+    ("Word", sum(e["kind"] == "docx" for e in entries)),
+    ("OpenDocument", sum(e["kind"] == "odt" for e in entries)),
+    ("PDF", sum(e["kind"] == "pdf" for e in entries))] if n)
+st.caption(f"Found **{len(entries) - n_docs}** diagrams and **{n_docs}** documents in "
            f"**{len({e['path'] for e in entries})}** files — "
-           f"{len(entries) - n_drawio - n_docs} Mermaid · {n_drawio} draw.io")
+           f"{len(entries) - n_drawio - n_docs} Mermaid · {n_drawio} draw.io{doc_detail and ' · ' + doc_detail}")
 
 # Changes whenever a file is added, removed or edited, so the browser only rebuilds the grid when needed
 signature = hashlib.sha1(
@@ -228,7 +235,7 @@ result = gallery_view(
 request = result.open
 if request:
     # Only open files that are part of the current scan — never an arbitrary path from the browser.
-    # Kind matters too: a Markdown file has a document card and (block None) a card for its only Mermaid block.
+    # Kind matters too: a Markdown file has a document card and (kind "mermaid") a card for each Mermaid block in it.
     entry = next((e for e in entries if e["path"] == request.get("path") and e["block"] == request.get("block")
                   and e["kind"] == request.get("kind")), None)
     if entry is None:
@@ -237,6 +244,12 @@ if request:
         try:
             diagram_scan.open_with_default_app(diagram_scan.markdown_to_docx(entry["path"]))
             st.toast(f"Opening **{entry['name']}** as a Word document …", icon="📄")
+        except (RuntimeError, OSError) as exc:
+            st.toast(str(exc), icon="❌")
+    elif entry["kind"] in ("docx", "odt", "pdf"):
+        try:
+            diagram_scan.open_with_default_app(entry["path"])
+            st.toast(f"Opening **{entry['name']}** in its default app …", icon="📄")
         except (RuntimeError, OSError) as exc:
             st.toast(str(exc), icon="❌")
     else:

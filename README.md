@@ -1,6 +1,6 @@
 # 🗂️ GalleryEd
 
-A Streamlit app for viewing and editing diagrams and documents. The **Gallery** previews every Mermaid, draw.io and Markdown file in a folder at a glance and opens it with a double-click — diagrams in the draw.io desktop app, Markdown documents as Word files via pandoc. The **Mermaid Designer** is a visual editor for [Mermaid](https://mermaid.js.org/) flowcharts with real-time styling controls, a drag-and-drop interactive canvas powered by [Cytoscape.js](https://js.cytoscape.org/), and one-click export to both Mermaid markup and PNG.
+A Streamlit app for viewing and editing diagrams and documents. The **Gallery** previews every Mermaid, draw.io, Markdown, Word (`.docx`), OpenDocument (`.odt`) and PDF file in a folder at a glance and opens it with a double-click — diagrams in the draw.io desktop app, Markdown documents as Word files via pandoc, and Word, OpenDocument or PDF files in their default app. The **Mermaid Designer** is a visual editor for [Mermaid](https://mermaid.js.org/) flowcharts with real-time styling controls, a drag-and-drop interactive canvas powered by [Cytoscape.js](https://js.cytoscape.org/), and one-click export to both Mermaid markup and PNG.
 
 ---
 
@@ -18,11 +18,13 @@ A Streamlit app for viewing and editing diagrams and documents. The **Gallery** 
 | **Export — PNG** | Download a high-resolution (2× scale) PNG snapshot of the interactive canvas |
 | **Compiled Code View** | Inspect the full styled Mermaid source (including `%%init` theme directives and `classDef`) at the bottom of the page |
 | **Live Render Token** | A sidebar indicator that changes on every style update — visual proof that the diagram re-renders reactively |
-| **Gallery** | Scan a whole folder (optionally with subfolders) for Mermaid, draw.io and Markdown files and browse small-scale previews of all of them on one page |
+| **Gallery** | Scan a whole folder (optionally with subfolders) for Mermaid, draw.io, Markdown, Word, OpenDocument and PDF files and browse small-scale previews of all of them on one page |
 | **draw.io Support** | Reads `.drawio` / `.dio` files (plain or compressed, multi-page) and `.drawio.svg` / `.drawio.png` exports with embedded diagrams |
 | **Content Search** | Filter the gallery by file name, folder, page name or any text inside the diagrams |
 | **Double-Click to Open** | Every diagram opens in the installed draw.io desktop app — Mermaid is converted into editable draw.io shapes |
 | **Markdown → Word** | Markdown files get a page preview card; double-click converts them with pandoc and opens the `.docx` in Word |
+| **Word & OpenDocument** | `.docx` and `.odt` files get the same page preview — text, headings and tables are read natively (python-docx / odfpy) — and open with a double-click in their default app |
+| **PDF Preview** | `.pdf` files show their actual first page, rendered to an image with [PyMuPDF](https://pymupdf.readthedocs.io/); page text is searchable, bookmarks become label chips, and a double-click opens the file in its default app |
 | **Delete to Trash** | The trash icon on a card moves its file to the system trash after a confirmation, so it can be restored. A Markdown document is deleted from its document card, not from the cards of the diagrams inside it |
 
 ---
@@ -86,7 +88,7 @@ mermaidEd/
 ├── gallery.py          # Page 2: Gallery (folder scan, double-click handling)
 ├── gallery_view.js     # Gallery browser component: thumbnails, filter, double-click
 ├── gallery_view.css    # Gallery component styles
-├── diagram_scan.py     # Finds and parses Mermaid / draw.io / Markdown files (no Streamlit dependency)
+├── diagram_scan.py     # Finds and parses Mermaid / draw.io / Markdown / Word / ODT / PDF files (no Streamlit dependency)
 ├── requirements.txt    # Python dependencies
 └── README.md           # This file
 ```
@@ -194,17 +196,20 @@ At the bottom of the page, the **💾 Visual Theme Code Base** section displays 
 
 ### 6 — Gallery
 
-Open **🗂️ Gallery** in the sidebar, enter a folder path and press Enter. Every diagram and Markdown document found is shown as a card with a small preview, the file name, its folder, the diagram type, the labels it contains and the last-modified date.
+Open **🗂️ Gallery** in the sidebar, enter a folder path and press Enter. Every diagram and document found is shown as a card with a small preview, the file name, its folder, the diagram type, the labels it contains and the last-modified date.
 
 | File type | What is shown |
 |---|---|
 | `.mmd`, `.mermaid` | Mermaid diagram (any type — flowchart, sequence, class, …) |
 | `.md`, `.markdown` | A document card showing the top of the rendered page (headings as labels, word count), plus one card per ` ```mermaid ` block |
+| `.docx` | Word document — the text is read with [python-docx](https://python-docx.readthedocs.io/) and shown as a miniature page (headings as labels, tables, word count) |
+| `.odt` | OpenDocument Text — read with [odfpy](https://github.com/jmcnamara/odfpy) and previewed the same way |
+| `.pdf` | The rendered first page itself (PyMuPDF), with page count and word count; the outline/bookmarks are the label chips and the page text is searchable |
 | `.drawio`, `.dio` | First page of the draw.io diagram; page names and count on the card |
 | `.drawio.svg`, `.drawio.png` | The exported image itself; labels read from the embedded diagram |
 
-- **Filter** — type in the search box to match file names, folders, page names and any text inside the diagrams (all words must match).
-- **All / Mermaid / draw.io / Markdown** — show only one kind of card.
+- **Filter** — type in the search box to match file names, folders, page names and any text inside the diagrams or documents (all words must match).
+- **All / Mermaid / draw.io / Markdown / Word · ODT / PDF** — show only one kind of card.
 - **By folder / A–Z / Newest** — group by folder, or sort by name or modification date.
 - **S / M / L** — preview size.
 - **Double-click** (or select a card and press Enter) opens the diagram in the **draw.io desktop app** ([download](https://www.drawio.com/)) on the machine that runs Streamlit (macOS, Windows and Linux):
@@ -216,6 +221,7 @@ Open **🗂️ Gallery** in the sidebar, enter a folder path and press Enter. Ev
   - pandoc runs in the Markdown file's folder, so relative image paths work as on the command line, and your `reference.docx` in the pandoc data folder is used as usual.
   - An unchanged file reopens its last conversion instantly; after you edit the Markdown, the next double-click converts it again.
   - Mermaid blocks appear as code in the `.docx` — pandoc does not draw them.
+- **Double-click a Word, OpenDocument or PDF card** to open the file itself with the app your OS associates with it (Word, LibreOffice, Preview, Acrobat, …) — nothing is converted, so formatting, images and tables keep full fidelity. No pandoc needed.
 - **🔄 Rescan** — re-read the folder. Files you changed are picked up automatically on the next interaction; Rescan forces a full re-read.
 
 Previews are rendered lazily as you scroll, so folders with hundreds of diagrams stay responsive. Folders named `.git`, `node_modules`, `.venv`, `venv`, `__pycache__` and hidden folders are skipped; a scan stops after 1500 files and files larger than 5 MB are listed without preview.
@@ -237,7 +243,7 @@ Previews are rendered lazily as you scroll, so folders with hundreds of diagrams
 | Component | Description |
 |---|---|
 | `find_diagram_files()` | Walks the folder, skipping tool and hidden folders, and returns all candidate diagram files |
-| `load_entries()` | Parses one file into gallery entries: Mermaid type and labels, or draw.io pages, shape count and labels (decompressing base64 + deflate diagram payloads, and reading the diagram embedded in `.drawio.svg` / `.drawio.png`). Cached per file by modification time and size |
+| `load_entries()` | Parses one file into gallery entries: Mermaid type and labels, draw.io pages, shape count and labels (decompressing base64 + deflate diagram payloads, and reading the diagram embedded in `.drawio.svg` / `.drawio.png`), the heading/paragraph/table structure of a `.docx` / `.odt` document (rendered as a Markdown preview), or a PDF's first-page image, text and outline. Cached per file by modification time and size |
 | `drawio_file_for()` | Picks the file to hand to draw.io — the diagram file itself, or a temporary `.mmd` for a Mermaid block inside Markdown |
 | `open_in_drawio()` | Locates the draw.io desktop app for the current OS and opens a file in it |
 | `markdown_to_docx()` | Converts a Markdown file to `.docx` with pandoc into a temp folder (one per file version, so unchanged files reuse their last conversion) |

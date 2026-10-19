@@ -1,4 +1,5 @@
-"""Directory scanner for Mermaid and draw.io diagram files and Markdown documents.
+"""Directory scanner for Mermaid and draw.io diagram files, Markdown documents,
+Word (.docx), OpenDocument Text (.odt) and PDF documents.
 
 Pure Python (no Streamlit dependency) so it can be reused and tested on its own.
 Each discovered diagram becomes a plain dict that the gallery page ships to the
@@ -24,6 +25,7 @@ MERMAID_EXTS = (".mmd", ".mermaid")
 MARKDOWN_EXTS = (".md", ".markdown")
 DRAWIO_EXTS = (".drawio", ".dio")
 DRAWIO_IMAGE_EXTS = (".drawio.svg", ".drawio.png")
+OFFICE_EXTS = (".docx", ".odt")  # Word / OpenDocument Text — read natively, opened with the default app
 
 SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__", ".idea", ".vscode"}
 
@@ -32,6 +34,10 @@ MAX_PREVIEW_BYTES = 5 * 1024 * 1024  # larger files are listed but not previewed
 MAX_SEARCH_CHARS = 6000              # text shipped to the browser for filtering
 MAX_LABELS = 12                      # label chips shown on a card
 MAX_DOC_PREVIEW_CHARS = 4000         # Markdown shipped to the browser for a document thumbnail
+MAX_OFFICE_CHARS = 20000             # paragraph text pulled from a Word / OpenDocument file
+MAX_PDF_PREVIEW_BYTES = 25 * 1024 * 1024  # PDFs are bigger on average — first-page render is cheap anyway
+MAX_PDF_TEXT_PAGES = 300             # pages read for a PDF's word count and search text
+PDF_PREVIEW_DPI = 100                # resolution of the first-page PNG thumbnail
 PANDOC_TIMEOUT_S = 120
 
 MERMAID_FENCE = re.compile(r"^```+\s*mermaid\s*$\n(.*?)^```+\s*$", re.MULTILINE | re.DOTALL | re.IGNORECASE)
@@ -57,7 +63,7 @@ MERMAID_TYPES = {
 
 
 def classify(path):
-    """Return 'mermaid', 'markdown', 'drawio', 'drawio-image' or None for a file path."""
+    """Return 'mermaid', 'markdown', 'drawio', 'drawio-image', 'docx', 'odt', 'pdf' or None for a file path."""
     name = path.name.lower()
     if name.endswith(DRAWIO_IMAGE_EXTS):
         return "drawio-image"
@@ -67,6 +73,10 @@ def classify(path):
         return "mermaid"
     if name.endswith(MARKDOWN_EXTS):
         return "markdown"
+    if name.endswith(OFFICE_EXTS):
+        return "docx" if name.endswith(".docx") else "odt"
+    if name.endswith(".pdf"):
+        return "pdf"
     return None
 
 
@@ -146,6 +156,191 @@ def _markdown_entry(text):
         "search": text[:MAX_SEARCH_CHARS],
         "source": preview[:MAX_DOC_PREVIEW_CHARS],
     }
+
+
+# ============================================================
+# WORD (.docx) AND OPENDOCUMENT (.odt) DOCUMENTS
+# ============================================================
+def _md_escape(text):
+    """Escape extracted text so the browser's Markdown renderer shows it as plain prose."""
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return re.sub(r"([`*_\\|])", r"\\\1", text)
+
+
+def _docx_body_blocks(doc):
+    """Yield paragraphs and tables of a python-docx Document in body order."""
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield Paragraph(child, doc)
+        elif child.tag == qn("w:tbl"):
+            yield Table(child, doc)
+
+
+def _docx_heading_level(paragraph):
+    """Heading depth 1-6 from the paragraph style, or 0 for body text. Matches style ids too,
+    which stay English ('Heading1') in documents created in other languages."""
+    style = paragraph.style
+    name = " ".join(str(getattr(style, "name", "") or "").lower().split())
+    style_id = str(getattr(style, "style_id", "") or "").lower()
+    m = re.search(r"heading\s*-?\s*([1-6])", name) or re.search(r"heading\s*-?\s*([1-6])", style_id)
+    if m:
+        return int(m.group(1))
+    if name == "title":
+        return 1
+    if name == "subtitle":
+        return 2
+    return 0
+
+
+def _collect_docx(path):
+    """Blocks of a .docx as ('h', level, text) / ('p', text) / ('table', [[cell, …], …])."""
+    import docx
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    blocks = []
+    for block in _docx_body_blocks(docx.Document(str(path))):
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            if text:
+                level = _docx_heading_level(block)
+                blocks.append(("h", level, text) if level else ("p", text))
+        elif isinstance(block, Table):
+            rows = [[" ".join(p.text for p in cell.paragraphs).strip() for cell in row.cells]
+                    for row in block.rows]
+            blocks.append(("table", rows))
+    return blocks
+
+
+def _collect_odt(path):
+    """Blocks of an .odt in the same shape as _collect_docx, walking the ODF body recursively."""
+    from odf import teletype
+    from odf.namespaces import TEXTNS
+    from odf.opendocument import load
+    blocks = []
+
+    def walk(node):
+        for child in node.childNodes:
+            tag = getattr(child, "qname", (None, None))[1]  # odfpy elements are typed by qname, not class
+            if tag == "h":  # heading — depth comes from its outline level
+                raw = child.attributes.get((TEXTNS, "outline-level"), "1")  # str or (ns, name) tuple
+                if isinstance(raw, tuple):
+                    raw = raw[1]
+                try:
+                    level = min(6, max(1, int(raw)))
+                except (TypeError, ValueError):
+                    level = 1
+                text = teletype.extractText(child).strip()
+                if text:
+                    blocks.append(("h", level, text))
+            elif tag == "p":
+                text = teletype.extractText(child).strip()
+                if text:
+                    blocks.append(("p", text))
+            elif hasattr(child, "childNodes"):
+                walk(child)  # lists and tables: their paragraphs stay in document order
+
+    walk(load(str(path)).text)
+    return blocks
+
+
+def _office_entry(path, kind):
+    """Word / OpenDocument document as one card, like a Markdown document: the text is turned into
+    Markdown for a page-preview thumbnail, headings become label chips, double-click opens the file
+    itself with the app the OS associates with it (Word, LibreOffice, Pages …)."""
+    blocks = _collect_docx(path) if kind == "docx" else _collect_odt(path)
+    lines, headings, plain = [], [], []
+    words = total = 0
+
+    def count(text):
+        nonlocal words, total
+        words += len(text.split())
+        total += len(text)
+
+    for block in blocks:
+        if total > MAX_OFFICE_CHARS:
+            break
+        if block[0] == "h":
+            _, level, text = block
+            lines.append(f"{'#' * level} {_md_escape(text)}")
+            if text not in headings:
+                headings.append(text)
+            count(text)
+            plain.append(text)
+        elif block[0] == "p":
+            lines.append(_md_escape(block[1]))
+            count(block[1])
+            plain.append(block[1])
+        else:  # table — a GFM table if it has a body row, plain pipe-joined lines otherwise
+            rows = [[cell for cell in row] for row in block[1] if any(row)]
+            if not rows:
+                continue
+            cols = max(len(row) for row in rows)
+            shown = ["| " + " | ".join(_md_escape(cell) for cell in row + [""] * (cols - len(row))) + " |"
+                     for row in rows[:20]]
+            if len(shown) > 1:
+                shown.insert(1, "|" + " --- |" * cols)
+            lines.append("\n".join(shown))
+            for row in rows:
+                plain.extend(cell for cell in row if cell)
+                count(" ".join(row))
+
+    return {
+        "kind": kind,
+        "subtype": "Word" if kind == "docx" else "OpenDocument",
+        "block": None,
+        "labels": headings[:MAX_LABELS],
+        "label_count": len(headings),
+        "words": words,
+        "search": " ".join(plain)[:MAX_SEARCH_CHARS],
+        "source": "\n\n".join(lines)[:MAX_DOC_PREVIEW_CHARS],
+    }
+
+
+# ============================================================
+# PDF DOCUMENTS
+# ============================================================
+def _pdf_entry(path):
+    """PDF document as one card. Unlike the other document kinds the thumbnail is the real thing:
+    the first page rendered to PNG (shown through the same image path as .drawio.png exports).
+    The page texts feed the search filter and word count, the document outline (bookmarks) and
+    metadata title provide the label chips, and double-click opens the file itself with the app
+    the OS associates with it (Preview, Acrobat, Chrome …)."""
+    import pymupdf
+    with pymupdf.open(str(path)) as doc:
+        if not doc.page_count:
+            raise ValueError("the PDF has no pages")
+        pixmap = doc[0].get_pixmap(dpi=PDF_PREVIEW_DPI)
+        image = f"data:image/png;base64,{base64.b64encode(pixmap.tobytes('png')).decode('ascii')}"
+
+        words, texts, total = 0, [], 0
+        for i in range(min(doc.page_count, MAX_PDF_TEXT_PAGES)):  # huge PDFs: only the first pages are read
+            # "text" mode always returns a str; str() only quiets the checker about the dispatcher's union type
+            text = str(doc[i].get_text("text"))
+            words += len(text.split())
+            if total < MAX_SEARCH_CHARS:
+                texts.append(text)
+                total += len(text)
+
+        title = ((doc.metadata or {}).get("title") or "").strip()
+        headings = []
+        for heading in ([title] if title else []) + [t[1].strip() for t in doc.get_toc() if t[1].strip()]:
+            if heading not in headings:
+                headings.append(heading)
+
+        return {
+            "kind": "pdf",
+            "subtype": "PDF",
+            "block": None,
+            "labels": headings[:MAX_LABELS],
+            "label_count": len(headings),
+            "words": words,
+            "n_pages": doc.page_count,
+            "search": " ".join(" ".join(t.split()) for t in texts)[:MAX_SEARCH_CHARS],
+            "image": image,
+        }
 
 
 # ============================================================
@@ -267,10 +462,11 @@ def load_entries(path_str):
     stat = path.stat()
     base = {"path": str(path), "name": path.name, "mtime": stat.st_mtime, "size": stat.st_size}
 
-    if stat.st_size > MAX_PREVIEW_BYTES:
+    limit = MAX_PDF_PREVIEW_BYTES if kind == "pdf" else MAX_PREVIEW_BYTES
+    if stat.st_size > limit:
         return [{**base, "kind": _card_kind(kind),
                  "subtype": "too large", "block": None, "labels": [], "label_count": 0, "search": "",
-                 "error": f"File is larger than {MAX_PREVIEW_BYTES // (1024 * 1024)} MB — preview skipped."}]
+                 "error": f"File is larger than {limit // (1024 * 1024)} MB — preview skipped."}]
 
     try:
         if kind == "mermaid":
@@ -281,6 +477,29 @@ def load_entries(path_str):
             return [{**base, **_markdown_entry(text)}] + [
                 {**base, **_mermaid_entry(path, code.strip(), block=i + 1 if len(blocks) > 1 else None)}
                 for i, code in enumerate(blocks)]
+        if kind in ("docx", "odt"):
+            try:
+                return [{**base, **_office_entry(path, kind)}]
+            except ModuleNotFoundError:
+                return [{**base, "kind": kind, "subtype": "missing dependency", "block": None,
+                         "labels": [], "label_count": 0, "search": "",
+                         "error": "Reading Word / OpenDocument files needs extra packages — "
+                                  "run: pip install python-docx odfpy"}]
+            except Exception as exc:  # the office parsers raise many exception types on broken files
+                return [{**base, "kind": kind, "subtype": "unreadable", "block": None,
+                         "labels": [], "label_count": 0, "search": "",
+                         "error": f"Could not read document: {exc}"}]
+        if kind == "pdf":
+            try:
+                return [{**base, **_pdf_entry(path)}]
+            except ModuleNotFoundError:
+                return [{**base, "kind": kind, "subtype": "missing dependency", "block": None,
+                         "labels": [], "label_count": 0, "search": "",
+                         "error": "Reading PDF files needs an extra package — run: pip install pymupdf"}]
+            except Exception as exc:  # PyMuPDF raises its own exception types on broken files
+                return [{**base, "kind": kind, "subtype": "unreadable", "block": None,
+                         "labels": [], "label_count": 0, "search": "",
+                         "error": f"Could not read document: {exc}"}]
         return [{**base, **_drawio_entry(path, kind)}]
     except (OSError, ET.ParseError) as exc:
         return [{**base, "kind": _card_kind(kind), "subtype": "unreadable",

@@ -1,2 +1,5 @@
 streamlit>=1.51  # st.components.v2 (Gallery)
 send2trash  # safe delete in the Gallery
+python-docx  # read Word (.docx) documents in the Gallery
+odfpy  # read OpenDocument Text (.odt) documents in the Gallery
+pymupdf  # render PDF first pages and extract their text in the Gallery

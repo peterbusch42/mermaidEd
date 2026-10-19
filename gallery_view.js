@@ -1,5 +1,6 @@
 // Gallery — browser side of the `diagram_gallery` Streamlit v2 component.
-// Renders Mermaid, draw.io and Markdown thumbnails lazily and reports double-clicks to Python.
+// Renders Mermaid, draw.io, Markdown, Word (.docx), OpenDocument (.odt) and PDF thumbnails lazily
+// and reports double-clicks to Python.
 
 const DRAWIO_VIEWER_URL = "https://viewer.diagrams.net/js/viewer-static.min.js";
 const MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
@@ -7,6 +8,8 @@ const MARKED_URL = "https://cdn.jsdelivr.net/npm/marked@16/lib/marked.esm.js";
 const DOMPURIFY_URL = "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.es.mjs";
 const RENDER_TIMEOUT_MS = 15000;
 const SIZES = { S: 170, M: 250, L: 380 };
+const DOC_KINDS = ["markdown", "docx", "odt", "pdf"];  // kinds whose card is a document, not a diagram
+const OFFICE_KINDS = ["docx", "odt"];  // "Word / ODT" filter chip
 
 // ============================================================
 // LIBRARY LOADERS (shared across re-mounts via window)
@@ -113,7 +116,8 @@ async function renderDrawio(item, box) {
   fitSvgToBox(host, viewer?.graph?.getGraphBounds());
 }
 
-// The top of the document as a miniature page
+// The top of a Markdown / Word / OpenDocument file as a miniature page (their Python-side preview
+// is Markdown extracted from the document, so one renderer covers all three)
 async function renderMarkdown(item, box) {
   const toFragment = await loadMarkdown();
   const fragment = toFragment(item.source); // built in an inert document — nothing in it has loaded yet
@@ -181,7 +185,7 @@ function buildDeleteControls(state, card, item) {
   const confirm = el("div", "dg-confirm");
   confirm.hidden = true;
   confirm.appendChild(el("div", "dg-confirm-text", `Move “${item.name}” to the trash?`));
-  if (item.kind === "markdown") {
+  if (DOC_KINDS.includes(item.kind)) {
     confirm.appendChild(el("div", "dg-confirm-note", "The whole document goes, including any diagrams in it."));
   }
   const actions = el("div", "dg-confirm-actions");
@@ -230,7 +234,9 @@ function reviveFailedDeletes(root) {
 function buildCard(state, item) {
   const card = el("div", `dg-card dg-kind-${item.kind}`);
   card.tabIndex = 0;
-  const action = item.kind === "markdown" ? "open as a Word document (.docx)" : "open in draw.io";
+  const action = item.kind === "markdown" ? "open as a Word document (.docx)"
+    : ["docx", "odt", "pdf"].includes(item.kind) ? "open in its default app"
+    : "open in draw.io";
   card.title = `${item.path}${item.block ? ` (block ${item.block})` : ""}\nDouble-click to ${action}`;
   const kindLabel = item.kind === "mermaid" ? `Mermaid · ${item.subtype}` : item.subtype;
 
@@ -266,6 +272,7 @@ function buildCard(state, item) {
     meta.push(item.pages.length > 1 ? `${item.pages.length} pages` : item.pages[0]);
   }
   if (item.vertices) meta.push(`${item.vertices} shapes`);
+  if (item.n_pages) meta.push(`${item.n_pages.toLocaleString()} page${item.n_pages === 1 ? "" : "s"}`);
   if (item.words) meta.push(`${item.words.toLocaleString()} words`);
   body.appendChild(el("div", "dg-meta", meta.join(" · ")));
   if (item.kind === "drawio" && item.pages?.length > 1) {
@@ -339,7 +346,9 @@ function renderThumb(state, card) {
   }
 
   box.classList.add("dg-loading");
-  const render = { mermaid: renderMermaid, drawio: renderDrawio, markdown: renderMarkdown }[item.kind];
+  const renderDocument = (item) => renderMarkdown(item, box);
+  const render = { mermaid: renderMermaid, drawio: renderDrawio,
+                   markdown: renderDocument, docx: renderDocument, odt: renderDocument }[item.kind];
   const task = async () => {
     if (!card.isConnected) {
       delete card.dataset.rendered; // filtered out before its turn — retry when visible again
@@ -357,7 +366,7 @@ function renderThumb(state, card) {
     }
   };
   // Diagrams render one at a time; documents are cheap, so they don't wait behind them
-  if (item.kind === "markdown") task();
+  if (DOC_KINDS.includes(item.kind)) task();
   else state.queue = state.queue.then(task);
 }
 
@@ -366,7 +375,7 @@ function layout(state) {
   const terms = state.query.toLowerCase().split(/\s+/).filter(Boolean);
   const visible = state.cards.filter((card) => {
     const item = card.__item;
-    if (state.kind !== "all" && item.kind !== state.kind) return false;
+    if (state.kind !== "all" && !(state.kind === "docs" ? OFFICE_KINDS : [state.kind]).includes(item.kind)) return false;
     return terms.every((t) => card.__haystack.includes(t));
   });
 
@@ -450,7 +459,8 @@ function buildToolbar(state, data) {
     return group;
   };
 
-  const kinds = [["all", "All"], ["mermaid", "Mermaid"], ["drawio", "draw.io"], ["markdown", "Markdown"]];
+  const kinds = [["all", "All"], ["mermaid", "Mermaid"], ["drawio", "draw.io"],
+                 ["markdown", "Markdown"], ["docs", "Word / ODT"], ["pdf", "PDF"]];
   bar.appendChild(segmented(kinds, state.kind, (v) => {
     state.kind = v;
     layout(state);
@@ -468,7 +478,8 @@ function buildToolbar(state, data) {
   bar.appendChild(state.count);
 
   const notes = ["Double-click a card (or press Enter) to open it: diagrams in the draw.io app — Mermaid becomes " +
-    "editable draw.io shapes — and Markdown documents as Word files (.docx, via pandoc). " +
+    "editable draw.io shapes — Markdown documents as Word files (.docx, via pandoc), and Word (.docx), " +
+    "OpenDocument (.odt) or PDF files in their default app (Word, LibreOffice, Preview …). " +
     "The trash icon on a card moves its file to the system trash."];
   if (!data.hasDrawio) notes.push("⚠️ draw.io desktop app not found — install it from drawio.com to open diagrams.");
   if (!data.hasPandoc) notes.push("⚠️ pandoc not found — install it from pandoc.org to open Markdown documents.");
